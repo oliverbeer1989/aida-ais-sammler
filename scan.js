@@ -3,7 +3,21 @@ const WebSocket = require('ws');
 const API_KEY = process.env.AIS_API_KEY;
 const WORKER_URL = 'https://workers.dev';
 const UPLOAD_SECRET = process.env.UPLOAD_SECRET || 'aida-geheim-2026';
-const LAUSCH_ZEIT_MS = 25000;
+const LAUSCH_ZEIT_MS = 35000;
+
+const AIDA_FLOTTE = {
+  '247389200': 'AIDAnova',
+  '247435300': 'AIDAcosma',
+  '247385300': 'AIDAperla',
+  '247353800': 'AIDAprima',
+  '247322800': 'AIDAstella',
+  '247312900': 'AIDAmar',
+  '247302900': 'AIDAsol',
+  '247282500': 'AIDAblu',
+  '247255400': 'AIDAluna',
+  '247229700': 'AIDAbella',
+  '247187700': 'AIDAdiva'
+};
 
 async function run() {
   const funde = {};
@@ -16,18 +30,10 @@ async function run() {
     }, LAUSCH_ZEIT_MS);
 
     ws.on('open', () => {
-      const gebiete = [
-        [[27.0, -18.5], [29.5, -13.0]], // Kanaren
-        [[36.0, -5.5],  [44.5, 16.0]],  // Westliches Mittelmeer
-        [[34.0, 16.0],  [42.0, 30.0]],  // Östliches Mittelmeer
-        [[53.0, 4.0],   [62.0, 21.0]],  // Nord- und Ostsee
-        [[11.0, -85.0], [26.0, -59.0]], // Karibik
-        [[23.5, 51.0],  [26.5, 57.0]]   // Orient
-      ];
-
       ws.send(JSON.stringify({
         APIKey: API_KEY,
-        BoundingBoxes: gebiete,
+        BoundingBoxes: [[[-90, -180], [90, 180]]],
+        FiltersShipMMSI: Object.keys(AIDA_FLOTTE),
         FilterMessageTypes: ['ShipStaticData', 'PositionReport']
       }));
     });
@@ -35,17 +41,17 @@ async function run() {
     ws.on('message', (data) => {
       try {
         const msg = JSON.parse(data.toString());
-        const funkName = (
-          msg.MetaData?.ShipName ||
-          msg.Message?.ShipStaticData?.Name ||
-          ''
-        ).trim();
+        if (msg.error) {
+          console.error('AISstream Fehler:', msg.error);
+          return;
+        }
 
-        if (!funkName.toUpperCase().startsWith('AIDA')) return;
+        const mmsi = String(msg.MetaData?.MMSI || msg.Message?.PositionReport?.UserID || '');
+        const schiffsName = AIDA_FLOTTE[mmsi];
+        if (!schiffsName) return;
 
-        const saubererName = 'AIDA' + funkName.slice(4).trim().toLowerCase();
-        const eintrag = funde[saubererName] || {
-          name: saubererName,
+        const eintrag = funde[schiffsName] || {
+          name: schiffsName,
           sog: null,
           lat: null,
           lon: null,
@@ -72,7 +78,7 @@ async function run() {
           minute: '2-digit'
         });
 
-        funde[saubererName] = eintrag;
+        funde[schiffsName] = eintrag;
       } catch (e) {}
     });
 
