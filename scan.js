@@ -1,6 +1,6 @@
 const WebSocket = require('ws');
 
-const API_KEY = process.env.AIS_API_KEY;
+const API_KEY = (process.env.AIS_API_KEY || '').trim();
 const WORKER_URL = 'https://workers.dev';
 const UPLOAD_SECRET = process.env.UPLOAD_SECRET || 'aida-geheim-2026';
 const LAUSCH_ZEIT_MS = 45000;
@@ -21,7 +21,7 @@ const AIDA_FLOTTE = {
 
 async function run() {
   if (!API_KEY) {
-    console.error('FEHLER: AIS_API_KEY ist leer! Bitte Secret in GitHub prüfen.');
+    console.error('FEHLER: AIS_API_KEY ist leer!');
     process.exit(1);
   }
 
@@ -39,21 +39,19 @@ async function run() {
       console.log('WebSocket verbunden, sende Abo...');
       ws.send(JSON.stringify({
         APIKey: API_KEY,
-        BoundingBoxes: [[[-90, -180], [90, 180]]],
+        BoundingBoxes: [[[-90.0, -180.0], [90.0, 180.0]]],
         FiltersShipMMSI: Object.keys(AIDA_FLOTTE)
       }));
     });
 
     ws.on('message', (data) => {
       msgCount++;
+      const text = data.toString();
+      if (msgCount <= 3) {
+        console.log(`Paket #${msgCount}:`, text.slice(0, 300));
+      }
       try {
-        const text = data.toString();
         const msg = JSON.parse(text);
-        if (msg.error || msg.MessageType === 'Error') {
-          console.error('AISstream Meldung:', text);
-          return;
-        }
-
         const mmsi = String(msg.MetaData?.MMSI || msg.Message?.PositionReport?.UserID || '');
         const schiffsName = AIDA_FLOTTE[mmsi] || msg.MetaData?.ShipName?.trim();
         if (!schiffsName) return;
@@ -87,15 +85,10 @@ async function run() {
         });
 
         funde[schiffsName] = eintrag;
-      } catch (e) {
-        console.error('Parse-Fehler:', e.message);
-      }
+      } catch (e) {}
     });
 
-    ws.on('error', (err) => {
-      console.error('WebSocket-Fehler:', err.message);
-    });
-
+    ws.on('error', (err) => console.error('WebSocket-Fehler:', err.message));
     ws.on('close', (code) => {
       console.log('WebSocket geschlossen, Code:', code);
       clearTimeout(timer);
@@ -120,3 +113,4 @@ async function run() {
 }
 
 run();
+
