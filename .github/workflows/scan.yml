@@ -2,7 +2,7 @@ name: AIDA Flotte scannen
 
 on:
   schedule:
-    - cron: '17 * * * *' # Läuft jede Stunde um xx:17 Uhr
+    - cron: '*/20 * * * *' # Läuft jede Stunde um xx:17 Uhr
   workflow_dispatch:     # Erlaubt manuellen Start per Klick
 
 jobs:
