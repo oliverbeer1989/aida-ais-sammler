@@ -3,7 +3,7 @@ const WebSocket = require('ws');
 const API_KEY = process.env.AIS_API_KEY;
 const WORKER_URL = 'https://workers.dev';
 const UPLOAD_SECRET = process.env.UPLOAD_SECRET || 'aida-geheim-2026';
-const LAUSCH_ZEIT_MS = 35000;
+const LAUSCH_ZEIT_MS = 45000;
 
 const AIDA_FLOTTE = {
   '247389200': 'AIDAnova',
@@ -20,7 +20,13 @@ const AIDA_FLOTTE = {
 };
 
 async function run() {
+  if (!API_KEY) {
+    console.error('FEHLER: AIS_API_KEY ist leer! Bitte Secret in GitHub prüfen.');
+    process.exit(1);
+  }
+
   const funde = {};
+  let msgCount = 0;
   const ws = new WebSocket('wss://stream.aisstream.io/v0/stream');
 
   await new Promise((resolve) => {
@@ -30,24 +36,26 @@ async function run() {
     }, LAUSCH_ZEIT_MS);
 
     ws.on('open', () => {
+      console.log('WebSocket verbunden, sende Abo...');
       ws.send(JSON.stringify({
         APIKey: API_KEY,
         BoundingBoxes: [[[-90, -180], [90, 180]]],
-        FiltersShipMMSI: Object.keys(AIDA_FLOTTE),
-        FilterMessageTypes: ['ShipStaticData', 'PositionReport']
+        FiltersShipMMSI: Object.keys(AIDA_FLOTTE)
       }));
     });
 
     ws.on('message', (data) => {
+      msgCount++;
       try {
-        const msg = JSON.parse(data.toString());
-        if (msg.error) {
-          console.error('AISstream Fehler:', msg.error);
+        const text = data.toString();
+        const msg = JSON.parse(text);
+        if (msg.error || msg.MessageType === 'Error') {
+          console.error('AISstream Meldung:', text);
           return;
         }
 
         const mmsi = String(msg.MetaData?.MMSI || msg.Message?.PositionReport?.UserID || '');
-        const schiffsName = AIDA_FLOTTE[mmsi];
+        const schiffsName = AIDA_FLOTTE[mmsi] || msg.MetaData?.ShipName?.trim();
         if (!schiffsName) return;
 
         const eintrag = funde[schiffsName] || {
@@ -79,15 +87,23 @@ async function run() {
         });
 
         funde[schiffsName] = eintrag;
-      } catch (e) {}
+      } catch (e) {
+        console.error('Parse-Fehler:', e.message);
+      }
     });
 
-    ws.on('close', () => {
+    ws.on('error', (err) => {
+      console.error('WebSocket-Fehler:', err.message);
+    });
+
+    ws.on('close', (code) => {
+      console.log('WebSocket geschlossen, Code:', code);
       clearTimeout(timer);
       resolve();
     });
   });
 
+  console.log('Empfangene Pakete gesamt:', msgCount);
   console.log('Gefundene AIDA-Schiffe:', Object.keys(funde));
 
   if (Object.keys(funde).length > 0) {
