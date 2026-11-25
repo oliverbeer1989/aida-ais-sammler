@@ -1,0 +1,19 @@
+name: AIDA Flotte scannen
+
+on:
+  schedule:
+    - cron: '17 * * * *' # Läuft jede Stunde um xx:17 Uhr
+  workflow_dispatch:     # Erlaubt manuellen Start per Klick
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm install ws
+      - run: node scan.js
+        env:
+          AIS_API_KEY: ${{ secrets.AIS_API_KEY }}
