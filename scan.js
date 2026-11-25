@@ -3,7 +3,7 @@ const WebSocket = require('ws');
 const API_KEY = (process.env.AIS_API_KEY || '').trim();
 const WORKER_URL = 'https://workers.dev';
 const UPLOAD_SECRET = process.env.UPLOAD_SECRET || 'aida-geheim-2026';
-const LAUSCH_ZEIT_MS = 45000;
+const LAUSCH_ZEIT_MS = 90000;
 
 const AIDA_FLOTTE = {
   '247389200': 'AIDAnova',
@@ -30,13 +30,20 @@ async function run() {
   const ws = new WebSocket('wss://stream.aisstream.io/v0/stream');
 
   await new Promise((resolve) => {
+    const pingTimer = setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) {
+        try { ws.ping(); } catch (e) {}
+      }
+    }, 15000);
+
     const timer = setTimeout(() => {
+      clearInterval(pingTimer);
       try { ws.close(); } catch (e) {}
       resolve();
     }, LAUSCH_ZEIT_MS);
 
     ws.on('open', () => {
-      console.log('WebSocket verbunden, sende Abo...');
+      console.log('WebSocket verbunden, lausche 90 Sekunden...');
       ws.send(JSON.stringify({
         APIKey: API_KEY,
         BoundingBoxes: [[[-90.0, -180.0], [90.0, 180.0]]],
@@ -47,13 +54,16 @@ async function run() {
     ws.on('message', (data) => {
       msgCount++;
       const text = data.toString();
-      if (msgCount <= 3) {
-        console.log(`Paket #${msgCount}:`, text.slice(0, 300));
-      }
       try {
         const msg = JSON.parse(text);
+        if (msg.MessageType === 'SubscriptionConfirmation') {
+          console.log('Abo bestätigt!');
+          return;
+        }
+
         const mmsi = String(msg.MetaData?.MMSI || msg.Message?.PositionReport?.UserID || '');
-        const schiffsName = AIDA_FLOTTE[mmsi] || msg.MetaData?.ShipName?.trim();
+        const rohName = (msg.MetaData?.ShipName || msg.Message?.ShipStaticData?.Name || '').trim();
+        const schiffsName = AIDA_FLOTTE[mmsi] || (rohName.toUpperCase().startsWith('AIDA') ? rohName : '');
         if (!schiffsName) return;
 
         const eintrag = funde[schiffsName] || {
@@ -85,12 +95,14 @@ async function run() {
         });
 
         funde[schiffsName] = eintrag;
+        console.log('Treffer:', schiffsName, eintrag.lat, eintrag.lon);
       } catch (e) {}
     });
 
     ws.on('error', (err) => console.error('WebSocket-Fehler:', err.message));
     ws.on('close', (code) => {
       console.log('WebSocket geschlossen, Code:', code);
+      clearInterval(pingTimer);
       clearTimeout(timer);
       resolve();
     });
@@ -113,4 +125,3 @@ async function run() {
 }
 
 run();
-
