@@ -3,7 +3,7 @@ const WebSocket = require('ws');
 const API_KEY = (process.env.AIS_API_KEY || '').trim();
 const WORKER_URL = 'https://aida-flotte.oliver-beer1989.workers.dev/update';
 const UPLOAD_SECRET = process.env.UPLOAD_SECRET || 'aida-geheim-2026';
-const LAUSCH_ZEIT_MS = 90000;
+const LAUSCH_ZEIT_MS = 180000;
 
 const AIDA_FLOTTE = {
   '247389200': 'AIDAnova',
